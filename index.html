@@ -764,6 +764,8 @@
             return 'guest';
         };
         const getScopedStorageKey = (namespace = '', id = '') => `swamedia:${namespace}:${getUserStorageScope()}${id ? `:${id}` : ''}`;
+        const getAppPreferencesStorageKey = () => getScopedStorageKey('app_preferences');
+        const getAppLanguageStorageKey = () => getScopedStorageKey('app_language');
         const getUserWatchlistKey = () => getScopedStorageKey('watchlist');
         const getUserVoteStorageKey = (itemId = '') => getScopedStorageKey('vote', itemId);
         const getUserWatchlist = () => {
@@ -793,65 +795,16 @@
             const normalizedRoute = String(pageRoute || 'home').trim() || 'home';
             return normalizedRoute === 'home' ? '' : `?page=${encodeURIComponent(normalizedRoute)}`;
         };
-        const getBrowserPathForRoute = (pageRoute = 'home') => {
-            const [page, param1, param2] = String(pageRoute || 'home').split(':');
-            switch (page) {
-                case 'home': return '/home';
-                case 'appHub': return '/app';
-                case 'search': return '/search';
-                case 'series': return '/series';
-                case 'profile': return '/profile';
-                case 'premiumPlans': return '/payment';
-                case 'inviteRewards': return '/invite-rewards';
-                case 'likedMovies': return '/my-list';
-                case 'watchHistory': return '/watch-history';
-                case 'newPosts': return '/new-posts';
-                case 'feedbackHub': return '/feedback';
-                case 'settings': return '/settings';
-                case 'storyZone': return '/storyzone';
-                case 'Review': return '/trending';
-                case 'connection': return '/connection';
-                case 'Education':
-                    return param1 ? `/viral/${encodeRouteParam(param1)}` : '/viral';
-                case 'installApp':
-                    return `/install/${encodeRouteParam(param1 || 'android')}`;
-                case 'details':
-                    return `/details/${encodeRouteParam(param2 || 'movie')}/${encodeRouteParam(param1 || '')}`;
-                case 'watch':
-                    return `/watch/${encodeRouteParam(param1 || '')}`;
-                case 'categoryContent':
-                    return `/category/${encodeRouteParam(param1 || '')}`;
-                case 'genreContent':
-                    return `/genre/${encodeRouteParam(param1 || '')}`;
-                case 'djPage':
-                    return param1 ? `/dj/${encodeRouteParam(decodeRouteParam(param1))}` : '/dj';
-                case 'static':
-                    switch (param1) {
-                        case 'help': return '/help';
-                        case 'disclaimer': return '/disclaimer';
-                        case 'privacyPolicy': return '/privacy-policy';
-                        case 'aboutUs': return '/about-us';
-                        default: return `/${encodeRouteParam(param1 || 'page')}`;
-                    }
-                case 'storyDetail':
-                    return `/story/${encodeRouteParam(param1 || '')}`;
-                case 'chapterReader':
-                    return `/story/${encodeRouteParam(param1 || '')}/chapter/${encodeRouteParam(param2 || '')}`;
-                case 'seeAll':
-                    return '/see-all';
-                default:
-                    return `/page/${encodeRouteParam(pageRoute)}`;
-            }
-        };
+        const getBrowserPathForRoute = () => '/';
         const getBrowserUrlForRoute = (pageRoute = 'home', baseUrl = window.location.origin) => {
             try {
                 const base = new URL(baseUrl, window.location.origin);
-                base.pathname = getBrowserPathForRoute(pageRoute);
+                base.pathname = '/';
                 base.search = buildRouteQueryFallback(pageRoute);
                 base.hash = '';
                 return `${base.pathname}${base.search}`;
             } catch (error) {
-                const path = getBrowserPathForRoute(pageRoute);
+                const path = '/';
                 return `${path}${buildRouteQueryFallback(pageRoute)}`;
             }
         };
@@ -861,7 +814,7 @@
                 : window.location.origin;
             try {
                 const base = new URL(preferredBase, window.location.origin);
-                base.pathname = getBrowserPathForRoute(pageRoute);
+                base.pathname = '/';
                 base.search = buildRouteQueryFallback(pageRoute);
                 base.hash = '';
                 return base.toString();
@@ -877,6 +830,7 @@
                 case 'search': return 'Search';
                 case 'series': return 'Series';
                 case 'profile': return 'Profile';
+                case 'signup': return 'Jisajili';
                 case 'premiumPlans': return 'Payment';
                 case 'inviteRewards': return 'Invite Rewards';
                 case 'likedMovies': return 'My List';
@@ -930,6 +884,7 @@
                 case 'search': return 'search';
                 case 'series': return 'series';
                 case 'profile': return 'profile';
+                case 'signup': return 'signup';
                 case 'payment': return 'premiumPlans';
                 case 'invite-rewards': return 'inviteRewards';
                 case 'my-list': return 'likedMovies';
@@ -970,8 +925,10 @@
 
         const loadAppPreferences = () => {
             try {
-                const storedPrefs = JSON.parse(localStorage.getItem(APP_PREFERENCES_KEY) || '{}');
-                const storedLanguage = localStorage.getItem(APP_LANGUAGE_KEY);
+                const scopedPrefs = localStorage.getItem(getAppPreferencesStorageKey());
+                const legacyPrefs = localStorage.getItem(APP_PREFERENCES_KEY);
+                const storedPrefs = JSON.parse(scopedPrefs || legacyPrefs || '{}');
+                const storedLanguage = localStorage.getItem(getAppLanguageStorageKey()) || localStorage.getItem(APP_LANGUAGE_KEY);
                 return {
                     ...DEFAULT_APP_PREFERENCES,
                     ...storedPrefs,
@@ -985,9 +942,14 @@
 
         const saveAppPreferences = (updates = {}) => {
             appPreferences = { ...appPreferences, ...updates };
-            localStorage.setItem(APP_PREFERENCES_KEY, JSON.stringify(appPreferences));
-            localStorage.setItem(APP_LANGUAGE_KEY, appPreferences.language);
+            localStorage.setItem(getAppPreferencesStorageKey(), JSON.stringify(appPreferences));
+            localStorage.setItem(getAppLanguageStorageKey(), appPreferences.language);
             return appPreferences;
+        };
+        const syncAppPreferencesForCurrentUser = async () => {
+            appPreferences = loadAppPreferences();
+            applyAppTheme(appPreferences.theme);
+            await applyAppLanguage(appPreferences.language);
         };
 
         const getCurrentRoute = () => historyStack[historyStack.length - 1] || 'home';
@@ -2257,7 +2219,7 @@
             return uniqueGenres.length > 0 ? uniqueGenres : ['Unknown Genre'];
         };
 
-        const getSavedAppLanguage = () => appPreferences.language || localStorage.getItem(APP_LANGUAGE_KEY) || 'sw';
+        const getSavedAppLanguage = () => appPreferences.language || localStorage.getItem(getAppLanguageStorageKey()) || localStorage.getItem(APP_LANGUAGE_KEY) || 'sw';
 
         const ensureGoogleTranslateLoaded = () => new Promise((resolve) => {
             if (window.google?.translate?.TranslateElement) {
@@ -2430,6 +2392,8 @@
 
         const initApp = async () => {
             let initializationComplete = false;
+            const initialRoute = getRouteFromLocation();
+            const isDirectEntryRoute = initialRoute !== 'home';
             handleIncomingReferralLink();
             appPreferences = loadAppPreferences();
             applyAppTheme(appPreferences.theme);
@@ -2444,21 +2408,26 @@
                 return;
             }
 
-            const hideLoader = () => {
+            const hideLoader = (immediate = false) => {
                 const loader = document.getElementById('app-loader');
                 if (loader && !loader.classList.contains('loader-hidden')) {
                     loader.classList.add('loader-hidden');
+                    const removeDelay = immediate ? 0 : 500;
                     setTimeout(() => {
                         if (loader.parentNode) loader.parentNode.removeChild(loader);
-                    }, 500); 
+                    }, removeDelay); 
                 }
             };
+
+            if (isDirectEntryRoute) {
+                hideLoader(true);
+            }
             
             const safetyTimeout = setTimeout(async () => {
                 if (!initializationComplete) {
                     console.warn("App initialization timed out after 5 seconds. Forcing UI render.");
                     hideLoader();
-                    await navigateTo('home').catch(e => {
+                    await navigateTo(initialRoute, true, { suppressLoader: true }).catch(e => {
                         console.error("Failed to render home page on timeout", e);
                         appContainer.innerHTML = `<div class="p-8 text-center text-red-400">App failed to load. Please refresh the page.</div>`;
                     });
@@ -2501,9 +2470,8 @@
                     console.error('Failed to apply saved language:', error);
                 });
                 
-                const initialRoute = getRouteFromLocation();
                 historyStack = [initialRoute];
-                await navigateTo(initialRoute, true, { skipUrlUpdate: true, skipHistoryStack: true });
+                await navigateTo(initialRoute, true, { skipUrlUpdate: true, skipHistoryStack: true, suppressLoader: isDirectEntryRoute });
 
                 setupFirebaseMessaging();
 
@@ -2524,11 +2492,11 @@
                 }, 15000);
 
             } catch (error) {
-                console.error("Critical error during app initialization:", error);
+                    console.error("Critical error during app initialization:", error);
                 try {
                     const fallbackRoute = getRouteFromLocation();
                     historyStack = [fallbackRoute];
-                    await navigateTo(fallbackRoute, true, { skipUrlUpdate: true, skipHistoryStack: true });
+                    await navigateTo(fallbackRoute, true, { skipUrlUpdate: true, skipHistoryStack: true, suppressLoader: fallbackRoute !== 'home' });
                 } catch(renderError) {
                     console.error("Failed to render home page after an error:", renderError);
                     appContainer.innerHTML = `<div class="p-8 text-center text-red-400">A critical error occurred. Please refresh the page.</div>`;
@@ -5136,7 +5104,7 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
             `;
         };
 
-        const renderProfilePage = () => {
+        const renderProfilePage = (authView = 'login') => {
             let userSectionHtml = '';
             if (currentUser) {
                 let statusHtml = '';
@@ -5163,7 +5131,12 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                     <div class="bg-gray-900 rounded-lg p-4 mb-6 text-center relative">
                         <i class="fas fa-user-circle text-6xl text-slate-500 mx-auto -mt-10 bg-gray-900 p-2 rounded-full border-4 border-black"></i>
                         <p class="font-semibold text-lg mt-2">${currentUser.phone || currentUser.email}</p>
-                        <p class="text-xs text-slate-400 font-mono">ID: ${currentUser.uid}</p>
+                        <div class="mt-2 flex items-center justify-center gap-2 text-xs text-slate-400 font-mono flex-wrap">
+                            <span>ID: ${currentUser.uid}</span>
+                            <button id="copy-user-id-btn" type="button" class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-slate-200 hover:bg-black/40 transition-colors">
+                                <i class="fas fa-copy text-[10px]"></i><span>Copy</span>
+                            </button>
+                        </div>
                         <div class="flex items-center justify-center space-x-6 mt-4 pt-4 border-t border-gray-700">
                             <div class="text-sm"><span class="text-slate-400 block">Status</span> ${statusHtml}</div>
                             <div class="text-sm"><span class="text-slate-400 block">Remainder</span> <span class="font-semibold">${remainderHtml}</span></div>
@@ -6286,7 +6259,7 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
         };
 
         const navigateTo = async (pageRoute, replaceState = false, navigationOptions = {}) => {
-            const { skipUrlUpdate = false, skipHistoryStack = false } = navigationOptions;
+            const { skipUrlUpdate = false, skipHistoryStack = false, suppressLoader = false } = navigationOptions;
             const sensitivePages = ['Education', 'Review', 'connection'];
 
             if (isFamilyModeEnabled() && isSensitiveRoute(pageRoute)) {
@@ -6305,7 +6278,9 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                  return; 
             }
 
-            showPageLoader();
+            if (!suppressLoader) {
+                showPageLoader();
+            }
             try {
                 // const [page, param1, param2] = pageRoute.split(':'); // This is already destructured above
                 const [, param1, param2] = pageRoute.split(':');
@@ -6391,7 +6366,9 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                 console.error("Navigation error:", error);
                 appContainer.innerHTML = `<div class="p-8 text-center text-red-400">Could not load page. Please try again.</div>`;
             } finally {
-                hidePageLoader();
+                if (!suppressLoader) {
+                    hidePageLoader();
+                }
             }
         };
 
