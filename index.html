@@ -789,6 +789,10 @@
             if (cleanPath === '/' || cleanPath === '/index.html') return '/';
             return cleanPath.replace(/\/$/, '') || '/';
         };
+        const buildRouteQueryFallback = (pageRoute = 'home') => {
+            const normalizedRoute = String(pageRoute || 'home').trim() || 'home';
+            return normalizedRoute === 'home' ? '' : `?page=${encodeURIComponent(normalizedRoute)}`;
+        };
         const getBrowserPathForRoute = (pageRoute = 'home') => {
             const [page, param1, param2] = String(pageRoute || 'home').split(':');
             switch (page) {
@@ -839,6 +843,32 @@
                     return `/page/${encodeRouteParam(pageRoute)}`;
             }
         };
+        const getBrowserUrlForRoute = (pageRoute = 'home', baseUrl = window.location.origin) => {
+            try {
+                const base = new URL(baseUrl, window.location.origin);
+                base.pathname = getBrowserPathForRoute(pageRoute);
+                base.search = buildRouteQueryFallback(pageRoute);
+                base.hash = '';
+                return `${base.pathname}${base.search}`;
+            } catch (error) {
+                const path = getBrowserPathForRoute(pageRoute);
+                return `${path}${buildRouteQueryFallback(pageRoute)}`;
+            }
+        };
+        const buildShareUrlForRoute = (pageRoute = getCurrentRoute()) => {
+            const preferredBase = appShareLinkCache && /^https?:\/\//i.test(appShareLinkCache)
+                ? appShareLinkCache
+                : window.location.origin;
+            try {
+                const base = new URL(preferredBase, window.location.origin);
+                base.pathname = getBrowserPathForRoute(pageRoute);
+                base.search = buildRouteQueryFallback(pageRoute);
+                base.hash = '';
+                return base.toString();
+            } catch (error) {
+                return `${window.location.origin}${getBrowserUrlForRoute(pageRoute)}`;
+            }
+        };
         const getPageTitleForRoute = (pageRoute = 'home') => {
             const [page, param1] = String(pageRoute || 'home').split(':');
             switch (page) {
@@ -872,17 +902,20 @@
             }
         };
         const updateBrowserRoute = (pageRoute = 'home', replaceState = false) => {
-            const targetPath = getBrowserPathForRoute(pageRoute);
+            const targetUrl = getBrowserUrlForRoute(pageRoute);
             const currentPath = normalizePathname(window.location.pathname);
-            const shouldReplace = replaceState || currentPath === targetPath;
-            window.history[shouldReplace ? 'replaceState' : 'pushState']({ pageRoute }, '', targetPath);
+            const currentSearch = window.location.search || '';
+            const targetPath = getBrowserPathForRoute(pageRoute);
+            const targetSearch = buildRouteQueryFallback(pageRoute);
+            const shouldReplace = replaceState || (currentPath === targetPath && currentSearch === targetSearch);
+            window.history[shouldReplace ? 'replaceState' : 'pushState']({ pageRoute }, '', targetUrl);
             document.title = `SwaMedia | ${getPageTitleForRoute(pageRoute)}`;
         };
         const getRouteFromLocation = () => {
             const url = new URL(window.location.href);
             const pathname = normalizePathname(url.pathname);
             const segments = pathname.split('/').filter(Boolean);
-            const directPage = url.searchParams.get('page');
+            const directPage = url.searchParams.get('page') || url.hash.replace(/^#/, '').replace(/^page=/, '');
             const legacyId = url.searchParams.get('id');
             const legacyType = url.searchParams.get('type');
 
@@ -6541,7 +6574,7 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                 const shareData = {
                     title: `Check out this ${itemType} on SwaMedia!`,
                     text: `Watch or download from SwaMedia.`,
-                    url: appShareLinkCache
+                    url: buildShareUrlForRoute(getCurrentRoute())
                 };
                 try {
                     navigator.share(shareData);
