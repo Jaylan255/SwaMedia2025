@@ -1,0 +1,15 @@
+{
+  "routes": [
+    {
+      "src": "/admin/?",
+      "dest": "/admin/admin.html"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ]
+}

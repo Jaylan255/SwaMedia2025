@@ -4,10 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="SwaMedia">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=no">
     <title>SwaMedia</title>
     <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.svg">
 <meta name="theme-color" content="#3b82f6">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -600,6 +602,7 @@
         const appContainer = document.getElementById('app-container');
         const bottomNav = document.getElementById('bottom-nav');
         let historyStack = ['home'];
+        let isOfflineViewActive = false;
         let premiumSettings = { isActive: false };
         let allContentCache = null;
         let currentUser = null;
@@ -790,6 +793,7 @@
             const [page, param1, param2] = String(pageRoute || 'home').split(':');
             switch (page) {
                 case 'home': return '/home';
+                case 'appHub': return '/app';
                 case 'search': return '/search';
                 case 'series': return '/series';
                 case 'profile': return '/profile';
@@ -839,6 +843,7 @@
             const [page, param1] = String(pageRoute || 'home').split(':');
             switch (page) {
                 case 'home': return 'Home';
+                case 'appHub': return 'App';
                 case 'search': return 'Search';
                 case 'series': return 'Series';
                 case 'profile': return 'Profile';
@@ -888,6 +893,7 @@
             const [first, second, third, fourth] = segments;
             switch (first) {
                 case 'home': return 'home';
+                case 'app': return 'appHub';
                 case 'search': return 'search';
                 case 'series': return 'series';
                 case 'profile': return 'profile';
@@ -952,6 +958,61 @@
         };
 
         const getCurrentRoute = () => historyStack[historyStack.length - 1] || 'home';
+        const isIosDevice = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafariBrowser = () => {
+            const ua = navigator.userAgent || '';
+            return /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|Chrome|Android/i.test(ua);
+        };
+        const isRunningStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const renderNoInternetPage = () => {
+            isOfflineViewActive = true;
+            document.title = 'SwaMedia | No Internet';
+            appContainer.innerHTML = `
+                <div class="page min-h-screen flex items-center justify-center p-5">
+                    <div class="w-full max-w-md rounded-[32px] border border-white/10 bg-gradient-to-b from-slate-900 to-black p-6 text-center shadow-2xl">
+                        <div class="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+                            <i class="fas fa-wifi text-3xl"></i>
+                        </div>
+                        <p class="text-xs uppercase tracking-[0.35em] text-red-300 mb-3">No Internet</p>
+                        <h1 class="text-3xl font-black text-white mb-3">Hakuna mtandao</h1>
+                        <p class="text-slate-300 leading-relaxed mb-6">Tafadhali washa data au Wi-Fi kisha jaribu tena. Ukirudi online app itajaribu kufungua tena page yako.</p>
+                        <button id="retry-connection-btn" class="w-full rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 transition-colors">
+                            Jaribu Tena
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('retry-connection-btn')?.addEventListener('click', async () => {
+                if (navigator.onLine) {
+                    isOfflineViewActive = false;
+                    const targetRoute = getCurrentRoute() || getRouteFromLocation();
+                    await navigateTo(targetRoute, true, { skipUrlUpdate: true, skipHistoryStack: true });
+                } else {
+                    showNotification('Bado hakuna internet connection.', 'error');
+                }
+            });
+        };
+        const restoreFromOfflineView = async () => {
+            if (!isOfflineViewActive || !navigator.onLine) return;
+            isOfflineViewActive = false;
+            const targetRoute = getCurrentRoute() || getRouteFromLocation();
+            await navigateTo(targetRoute, true, { skipUrlUpdate: true, skipHistoryStack: true });
+        };
+        const handleIosDownloadRequest = () => {
+            if (!isIosDevice()) {
+                showNotification('Button hii ni kwa iPhone pekee.', 'error');
+                return;
+            }
+            if (isRunningStandalone()) {
+                showNotification('SwaMedia tayari ipo kwenye Home Screen ya simu yako.', 'success');
+                return;
+            }
+            if (!isSafariBrowser()) {
+                showNotification('Kwa iPhone tumia Safari ili uweze kuiweka kwenye Home Screen.', 'error');
+                return;
+            }
+            showIosInstallInstructions();
+        };
         const isFamilyModeEnabled = () => Boolean(appPreferences.familyMode);
         const hasAppLockPassword = () => Boolean(appPreferences.appLockPassword);
         const areActionButtonsLocked = () => hasAppLockPassword() && !appPreferences.buttonsUnlocked;
@@ -1120,6 +1181,7 @@
         };
         const getMoreMenuItems = () => {
             const items = [
+                { page: 'appHub', icon: 'fa-mobile-alt', label: 'App', color: 'text-blue-400' },
                 { page: 'premiumPlans', icon: 'fa-gem', label: 'Get Premium', color: 'text-yellow-400' },
                 { page: 'inviteRewards', icon: 'fa-gift', label: 'Invite Rewards', color: 'text-pink-400' },
                 { page: 'likedMovies', icon: 'fa-heart', label: 'My List Like', color: 'text-red-400' },
@@ -2339,6 +2401,16 @@
             appPreferences = loadAppPreferences();
             applyAppTheme(appPreferences.theme);
 
+            if (!navigator.onLine) {
+                renderNoInternetPage();
+                initializationComplete = true;
+                const loader = document.getElementById('app-loader');
+                if (loader && !loader.classList.contains('loader-hidden')) {
+                    loader.classList.add('loader-hidden');
+                }
+                return;
+            }
+
             const hideLoader = () => {
                 const loader = document.getElementById('app-loader');
                 if (loader && !loader.classList.contains('loader-hidden')) {
@@ -2434,6 +2506,16 @@
                 hideLoader();
             }
         };
+
+        window.addEventListener('offline', () => {
+            renderNoInternetPage();
+        });
+
+        window.addEventListener('online', () => {
+            restoreFromOfflineView().catch(error => {
+                console.error('Failed to restore app after reconnecting.', error);
+            });
+        });
 
         const itemCardTemplate = (item, type, extraClasses = '') => {
             if (!item || !item.id || !item.title) return '';
@@ -4489,14 +4571,14 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
             const modalContent = modal.querySelector('.modal-content');
             modalContent.innerHTML = `
                 <button id="close-ios-modal" class="absolute top-2 right-2 w-8 h-8 bg-gray-800 hover:bg-gray-700 transition-colors rounded-full text-slate-400 z-10">&times;</button>
-                <h3 class="text-center font-semibold text-xl mb-4 text-red-400"><i class="fab fa-apple mr-2"></i>Install on iPhone</h3>
+                <h3 class="text-center font-semibold text-xl mb-4 text-red-400"><i class="fab fa-apple mr-2"></i>Download on iPhone</h3>
                 <div class="space-y-4 text-slate-300">
-                    <p>To install this app on your iPhone, please follow these steps:</p>
+                    <p>SwaMedia haina native iPhone app kwa sasa, lakini unaweza kuiweka kama app kupitia Safari kwa kutumia PWA.</p>
                     <ol class="list-decimal list-inside space-y-2 bg-gray-800 p-4 rounded-lg text-left">
-                        <li>First, ensure you are using the <strong>Safari</strong> browser.</li>
-                        <li>Tap the 'Share' button <i class="fas fa-share-square"></i> at the bottom of the screen.</li>
-                        <li>Scroll down and tap on <strong>'Add to Home Screen'</strong>.</li>
-                        <li>Confirm by tapping 'Add' in the top right corner.</li>
+                        <li>Fungua website hii kwenye <strong>Safari</strong>.</li>
+                        <li>Bonyeza share button <i class="fas fa-share-square"></i> chini ya screen.</li>
+                        <li>Chagua <strong>Add to Home Screen</strong>.</li>
+                        <li>Bonyeza <strong>Add</strong> ili SwaMedia ionekane kama app kwenye Home Screen.</li>
                     </ol>
                 </div>
             `;
@@ -5184,6 +5266,7 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                     <div id="profile-navigation" class="mt-8">
                         <h2 class="text-xl font-bold mb-3">Quick Access</h2>
                         <div class="space-y-2 bg-gray-900 rounded-lg p-2">
+                             <a href="#" data-page="appHub" class="profile-link flex items-center p-3 hover:bg-gray-800 rounded-lg"><i class="fas fa-mobile-alt w-6 mr-4 text-center text-blue-400"></i><span>App</span><i class="fas fa-chevron-right ml-auto text-slate-500"></i></a>
                              <a href="#" data-page="premiumPlans" class="profile-link flex items-center p-3 hover:bg-gray-800 rounded-lg"><i class="fas fa-gem w-6 mr-4 text-center text-yellow-400"></i><span>Get Premium</span><i class="fas fa-chevron-right ml-auto text-slate-500"></i></a>
                              <a href="#" id="invite-rewards-link" data-page="inviteRewards" class="profile-link flex items-center p-3 hover:bg-gray-800 rounded-lg"><i class="fas fa-gift w-6 mr-4 text-center text-pink-400"></i><span>Reward by Invite Friend</span><i class="fas fa-chevron-right ml-auto text-slate-500"></i></a>
                              <a href="#" data-page="settings" class="profile-link flex items-center p-3 hover:bg-gray-800 rounded-lg"><i class="fas fa-cog w-6 mr-4 text-center text-slate-300"></i><span>Settings</span><i class="fas fa-chevron-right ml-auto text-slate-500"></i></a>
@@ -5198,15 +5281,10 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
       <div class="mt-8">
     <h2 class="text-xl font-bold mb-3">App</h2>
     <div class="space-y-3 bg-gray-900 rounded-lg p-4">
-
-        <button id="install-android-btn" class="w-full flex items-center justify-center p-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
-            <i class="fab fa-android mr-3 text-xl"></i> Download Android App
+        <button id="open-app-page-btn" class="w-full flex items-center justify-center p-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors">
+            <i class="fas fa-mobile-alt mr-3 text-xl"></i> App
         </button>
-
-        <button id="install-ios-btn" class="w-full flex items-center justify-center p-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors">
-            <i class="fab fa-apple mr-3 text-xl"></i> Download iOS App
-        </button>
-
+        <p class="text-sm text-slate-400 text-center">Bonyeza App kisha uchague Android au iPhone.</p>
     </div>
 </div>
                     </div>
@@ -5435,6 +5513,96 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
             renderFeedbackTimeline();
         };
 
+        const renderAppHubPage = async () => {
+            const [bannersSnap, allContent] = await Promise.all([fetchData('banners'), fetchAllContent()]);
+            const banners = transformSnapshotToArray(bannersSnap);
+            const heroImage = banners[0]?.imageUrl || allContent.find(item => item?.posterUrl)?.posterUrl || '';
+            const screenshots = filterContentForPreferences(allContent.filter(item => item?.posterUrl && item.isPublished !== false)).slice(0, 6);
+
+            appContainer.innerHTML = `
+                <div class="page min-h-screen">
+                    <div class="relative h-72 overflow-hidden">
+                        ${heroImage ? `<img src="${heroImage}" class="w-full h-full object-cover opacity-35">` : ''}
+                        <div class="absolute inset-0 bg-gradient-to-b from-black/35 via-black/75 to-black"></div>
+                        <div class="absolute top-4 left-4 right-4 flex items-center justify-between">
+                            <button id="back-btn" class="bg-black/60 hover:bg-gray-800 text-white rounded-full w-10 h-10 flex items-center justify-center transition-colors"><i class="fas fa-arrow-left"></i></button>
+                            <span class="text-xs uppercase tracking-[0.35em] text-slate-300">App Page</span>
+                        </div>
+                        <div class="absolute inset-x-0 bottom-0 p-4">
+                            <div class="max-w-md space-y-3">
+                                <div class="inline-flex items-center rounded-full bg-red-500/15 border border-red-500/30 px-3 py-1 text-xs font-semibold text-red-200">
+                                    SwaMedia App
+                                </div>
+                                <h1 class="text-3xl font-black text-white leading-tight">Chagua app unayotaka kufungua au kupakua</h1>
+                                <p class="text-sm text-slate-300">Bonyeza Android kama unatumia simu ya Android, au iPhone kama unataka kuona hatua za kusave app kwenye Home Screen.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 space-y-6">
+                        <div class="grid gap-4">
+                            <button id="open-android-app-btn" class="w-full text-left rounded-3xl border border-green-500/20 bg-gradient-to-r from-green-600 to-emerald-500 p-5 shadow-xl transition-transform hover:scale-[1.01]">
+                                <div class="flex items-center justify-between gap-4">
+                                    <div class="flex items-center gap-4">
+                                        <div class="w-14 h-14 rounded-2xl bg-black/20 flex items-center justify-center text-3xl text-white">
+                                            <i class="fab fa-android"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-[0.3em] text-green-100/80">Android</p>
+                                            <h2 class="text-2xl font-black text-white">Download Android App</h2>
+                                            <p class="text-sm text-green-50/90">Pakua APK na uanze kutumia app moja kwa moja.</p>
+                                        </div>
+                                    </div>
+                                    <i class="fas fa-chevron-right text-white/90"></i>
+                                </div>
+                            </button>
+
+                            <button id="open-ios-app-btn" class="w-full text-left rounded-3xl border border-blue-500/20 bg-gradient-to-r from-sky-600 to-blue-700 p-5 shadow-xl transition-transform hover:scale-[1.01]">
+                                <div class="flex items-center justify-between gap-4">
+                                    <div class="flex items-center gap-4">
+                                        <div class="w-14 h-14 rounded-2xl bg-black/20 flex items-center justify-center text-3xl text-white">
+                                            <i class="fab fa-apple"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-[0.3em] text-blue-100/80">iPhone</p>
+                                            <h2 class="text-2xl font-black text-white">Download</h2>
+                                            <p class="text-sm text-blue-50/90">Bonyeza hapa kuona hatua za kuiweka kama app kwenye Safari ya iPhone.</p>
+                                        </div>
+                                    </div>
+                                    <i class="fas fa-chevron-right text-white/90"></i>
+                                </div>
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="bg-gray-900 rounded-2xl p-4 text-center"><p class="text-xs text-slate-500">Platform</p><p class="text-lg font-bold text-white mt-2">2</p></div>
+                            <div class="bg-gray-900 rounded-2xl p-4 text-center"><p class="text-xs text-slate-500">Android</p><p class="text-lg font-bold text-white mt-2">APK</p></div>
+                            <div class="bg-gray-900 rounded-2xl p-4 text-center"><p class="text-xs text-slate-500">iPhone</p><p class="text-lg font-bold text-white mt-2">PWA</p></div>
+                        </div>
+
+                        <div class="bg-gray-900 rounded-2xl p-4">
+                            <p class="text-[11px] uppercase tracking-[0.35em] text-slate-500 mb-2">Why this page</p>
+                            <p class="text-slate-300 leading-relaxed">Hii page imewekwa ili user asikute confusion ya buttons nyingi. Sasa kuna page moja ya App, kisha ndani yake anachagua Android au iPhone kulingana na simu anayatumia.</p>
+                        </div>
+
+                        <div class="bg-gray-900 rounded-2xl p-4">
+                            <div class="flex items-center justify-between gap-3 mb-4">
+                                <h2 class="text-lg font-semibold text-white">Preview</h2>
+                                <span class="text-xs text-slate-500">Muonekano wa app</span>
+                            </div>
+                            <div class="flex overflow-x-auto gap-3 pb-2 horizontal-scroll">
+                                ${screenshots.map(item => `<img src="${item.posterUrl}" alt="${escapeHtml(item.title || 'Screenshot')}" class="w-40 h-72 rounded-2xl object-cover border border-white/10 flex-shrink-0">`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('back-btn')?.addEventListener('click', handleBack);
+            document.getElementById('open-android-app-btn')?.addEventListener('click', () => navigateTo('installApp:android'));
+            document.getElementById('open-ios-app-btn')?.addEventListener('click', () => navigateTo('installApp:ios'));
+        };
+
         const renderInstallAppPage = async (platform = 'android') => {
             const [bannersSnap, allContent] = await Promise.all([fetchData('banners'), fetchAllContent()]);
             const banners = transformSnapshotToArray(bannersSnap);
@@ -5442,8 +5610,8 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
             const screenshots = filterContentForPreferences(allContent.filter(item => item?.posterUrl && item.isPublished !== false)).slice(0, 8);
             const isIos = platform === 'ios';
             const stats = isIos
-                ? { downloads: '12K+', rating: '4.5 Star', size: 'PWA' }
-                : { downloads: '48K+', rating: '4.5 Star', size: 'MB 33.9' };
+                ? { downloads: '12K+', rating: '4.5 ⭐', size: 'PWA' }
+                : { downloads: '48K+', rating: '4.5 ⭐', size: 'MB 33.9' };
 
             appContainer.innerHTML = `
                 <div class="page min-h-screen">
@@ -5475,6 +5643,14 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                         </div>
 
                         <div class="bg-gray-900 rounded-2xl p-4">
+                            <div class="flex flex-wrap gap-3 mb-4">
+                                <button id="switch-android-page-btn" class="px-4 py-2 rounded-full font-semibold transition-colors ${isIos ? 'bg-gray-800 text-slate-300 hover:bg-gray-700' : 'bg-green-600 text-white'}">
+                                    <i class="fab fa-android mr-2"></i>Android
+                                </button>
+                                <button id="switch-ios-page-btn" class="px-4 py-2 rounded-full font-semibold transition-colors ${isIos ? 'bg-blue-600 text-white' : 'bg-gray-800 text-slate-300 hover:bg-gray-700'}">
+                                    <i class="fab fa-apple mr-2"></i>iPhone
+                                </button>
+                            </div>
                             <p class="text-[11px] uppercase tracking-[0.35em] text-slate-500 mb-2">Description</p>
                             <p class="text-slate-300 leading-relaxed">SwaMedia ni app ya burudani yenye movies na series nyingi za Kiswahili, search ya kisasa, DJ collections, storyzone, notifications za maombi ya movie, na experience inayokaa professional kwa Android na iPhone.</p>
                         </div>
@@ -5492,8 +5668,8 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                         <div class="bg-gradient-to-br from-slate-900 to-black rounded-2xl border border-white/10 p-4">
                             <div class="space-y-3">
                                 ${isIos ? `
-                                    <button id="install-ios-inline-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors">Users wa iPhone: Add to Home Screen</button>
-                                    <p class="text-sm text-slate-300">Bonyeza button hapo juu ili uone hatua za Add to Home Screen kwenye iPhone yako.</p>
+                                    <button id="install-ios-inline-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors">Download</button>
+                                    <p class="text-sm text-slate-300">Bonyeza Download ili uone jinsi ya kuiweka kwenye Home Screen ya iPhone kupitia Safari.</p>
                                 ` : `
                                     <a href="${APP_DOWNLOAD_URL}" target="_blank" class="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl transition-colors">Download App</a>
                                     <p class="text-sm text-slate-300">Pakua apk ya SwaMedia moja kwa moja na uanze kutumia app.</p>
@@ -5504,7 +5680,9 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
                 </div>
             `;
             document.getElementById('back-btn')?.addEventListener('click', handleBack);
-            document.getElementById('install-ios-inline-btn')?.addEventListener('click', showIosInstallInstructions);
+            document.getElementById('switch-android-page-btn')?.addEventListener('click', () => navigateTo('installApp:android', true));
+            document.getElementById('switch-ios-page-btn')?.addEventListener('click', () => navigateTo('installApp:ios', true));
+            document.getElementById('install-ios-inline-btn')?.addEventListener('click', handleIosDownloadRequest);
         };
 
         const renderLikedMoviesPage = async () => {
@@ -6128,6 +6306,7 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
 
                 switch(page) {
                     case 'home': await renderHomePage(); break;
+                    case 'appHub': await renderAppHubPage(); break;
                     case 'search': await renderSearchPage(); break;
                     case 'series': await renderAllSeriesPage(); break;
                     case 'profile': renderProfilePage(); break;
@@ -6222,6 +6401,7 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
             const enableNotificationsLink = e.target.closest('#enable-notifications-link');
             const installAndroidBtn = e.target.closest('#install-android-btn');
             const installIosBtn = e.target.closest('#install-ios-btn');
+            const openAppPageBtn = e.target.closest('#open-app-page-btn');
             const bannerSlide = e.target.closest('.banner-slide');
             const chapterLink = e.target.closest('.chapter-link');
 
@@ -6330,6 +6510,8 @@ const renderActionButtons = (item, size = 'large', itemType = null) => {
             } else if (enableNotificationsLink) {
                 e.preventDefault();
                 requestNotificationPermission();
+            } else if (openAppPageBtn) {
+                navigateTo('appHub');
             } else if (installAndroidBtn) {
                 navigateTo('installApp:android');
             } else if (installIosBtn) {
